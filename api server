@@ -118,7 +118,6 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                 RequestHandler.send_account_id(self)
             else:
                 print('Authorization failed')
-
         elif parsed_path.path == '/web/agent/configure':
             guid_string = re.match(r"(agent_guid=)(\S+)(&\S)", parsed_path.query)
             if self.config.validate_guid(guid_string.group(2)):
@@ -191,6 +190,7 @@ def main():
     password = input("Enter password: ")
     conf_profile = input("Enter path to JSON file (without parenthesis): ")
     config = ConfigHandler(conf_profile, username, password)
+    
     handler = handle_request_helper(config)
     server = http.server.HTTPServer(host,handler)
     print(20*'-' + '\n', datetime.datetime.now(), 'Starting server')
