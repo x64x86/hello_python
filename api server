@@ -1,0 +1,199 @@
+import urllib.parse
+import http.server
+import cgi
+import uuid
+import json
+import datetime
+import socket
+import re
+
+class ConfigHandler():
+# The class initializes configuration parameters.
+# It validates user/password, token, guid and gets profile from JSON file
+
+    def __init__(self, conf_profile, username, password):
+        self.user = {'username': username,
+                     'password': password,
+                     'grant_type': 'password',
+                     'client_id': 'ussui'
+        }
+        self.token = {'access_token': str(uuid.uuid4().hex),
+                       'expires_in': 3600,
+                       'token_type': "Bearer",
+                       'scope': 'null',
+                       'refresh_token': str(uuid.uuid4().hex)
+        }
+        self.account = {'accounts_id': 1,
+                        'username': username,
+                        'name': 'Test Admin',
+                        'account_name': 'Test Co Ltd',
+                        'allow_provision': 1,
+                        '_links': {},
+                        'user_id': 1,
+                        'user_type': 'admin'
+        }
+        self.guid = {'id':5,
+                     'name': '',
+                     'guid': str(uuid.uuid4()),
+                     'agent_type':'',
+                     'agent_win_profile_id': 0,
+                     'agent_mac_profile_id': 0,
+                     'agent_gataway_profile_id': 0,
+                     '_links':{}
+        }
+        self.conf_profile = conf_profile
+
+    def validate_user (self, username, password):
+        if username == self.user['username'] and password == self.user['password']:
+            return True
+        else:
+            return False
+
+    def validate_access_token (self, token):
+        if token == self.token['access_token']:
+            return True
+        else:
+            return False
+
+    def validate_guid (self, token):
+        if token == self.guid['guid']:
+            return True
+        else:
+            return False
+
+    def get_profile (self):
+        json_file = open(self.conf_profile, 'r')
+        profile = json_file.read()
+        json_file.close()
+        return profile
+
+
+class RequestHandler(http.server.BaseHTTPRequestHandler):
+# The class processes GET and POST requests
+
+    def __init__(self, conf, *args):
+        self.config = conf
+        http.server.BaseHTTPRequestHandler.__init__(self, *args)
+
+    def send_headers (self, code):
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+
+    def send_access_token (self):
+        print(datetime.datetime.now(), 'Sending token...')
+        self.send_headers(200)
+        self.wfile.write(json.dumps(self.config.token).encode())
+        print(datetime.datetime.now(), 'Token sent')
+        return
+
+    def send_account_id (self):
+        print(datetime.datetime.now(), 'Sending account ID...')
+        self.send_headers(200)
+        self.wfile.write(json.dumps(self.config.account).encode())
+        print(datetime.datetime.now(), 'Account ID sent')
+        return
+
+    def send_guid (self):
+        print(datetime.datetime.now(), 'Sending GUID...')
+        self.send_headers(201)
+        self.wfile.write(json.dumps(self.config.guid).encode())
+        print(datetime.datetime.now(), 'GUID sent')
+        return
+
+    def send_profile (self):
+        print (datetime.datetime.now(), 'Sending profile...')
+        self.send_headers(200)
+        self.wfile.write(self.config.get_profile().encode())
+        print(datetime.datetime.now(), 'Configuration profile sent')
+        return
+
+    def do_GET(self):
+    # Processing GET requests
+    # Invoking sendAccountID; sending Configuration Profile to the client
+
+        parsed_path = urllib.parse.urlparse(self.path)
+        headers = self.headers
+
+        if parsed_path.path == '/myaccount':
+            auth_string = re.match(r"(Bearer )(\S+)", headers['Authorization'])
+            if self.config.validate_access_token(auth_string.group(2)):
+                RequestHandler.send_account_id(self)
+            else:
+                print('Authorization failed')
+
+        elif parsed_path.path == '/web/agent/configure':
+            guid_string = re.match(r"(agent_guid=)(\S+)(&\S)", parsed_path.query)
+            if self.config.validate_guid(guid_string.group(2)):
+                RequestHandler.send_profile(self)
+            else:
+                print('GUID validation failed')
+        return
+
+    def do_POST(self):
+    # Processing POST requests
+    # Invoking sendAccessToken and sendGUID routines
+
+        parsed_path = urllib.parse.urlparse(self.path)
+        headers = self.headers
+        ctype, pdict = cgi.parse_header(self.headers['Content-Type'])
+
+        if ctype == 'application/json':
+            env = {}
+        else:
+            env = {'REQUEST_METHOD': 'POST',
+                     'CONTENT_TYPE': self.headers['Content-Type']
+            }
+        form = cgi.FieldStorage(
+            fp=self.rfile,
+            headers=self.headers,
+            environ=env
+        )
+
+        if parsed_path.path == '/oauth':
+            if self.config.validate_user(form['username'].value, form['password'].value):
+                self.send_access_token()
+            else:
+                print('Invalid username or password')
+        elif parsed_path.path == '/web/agents':
+            auth_string = re.match(r"(Bearer) (\S+)", headers['Authorization'])
+            if self.config.validate_access_token(auth_string.group(2)):
+                self.send_guid()
+            else:
+                print('Authorization failed')
+        return
+
+def handle_request_helper(conf):
+    return lambda *args: RequestHandler(conf, *args)
+
+def main():
+
+    ips = [i[4][0] for i in socket.getaddrinfo(socket.gethostname(), family=2, port=0)]
+    print ("Available IPs: ")
+
+    k = 0
+    i = 0
+    for ip in ips:
+        k += 1
+        print(k, ' - ', ip)
+
+    while (1):
+        selected_ip = int(input("Choose IP for listening (enter number): "))
+        if selected_ip > 0 and selected_ip < k+1:
+            hostname = ips[selected_ip - 1]
+            break
+        else:
+            print ('Incorrect input')
+
+    host = (hostname, 80)
+    username = input("Enter username: ")
+    password = input("Enter password: ")
+    conf_profile = input("Enter path to JSON file (without parenthesis): ")
+    config = ConfigHandler(conf_profile, username, password)
+    handler = handle_request_helper(config)
+    server = http.server.HTTPServer(host,handler)
+    print(datetime.datetime.now(), 'Server started')
+    server.serve_forever()
+
+if __name__ == '__main__':
+    main()
