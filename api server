@@ -79,33 +79,30 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header('Content-Type', 'application/json')
         self.end_headers()
+        return
 
     def send_access_token (self):
-        print(datetime.datetime.now(), 'Sending token...')
+        print(datetime.datetime.now(), 'Sending token')
         self.send_headers(200)
         self.wfile.write(json.dumps(self.config.token).encode())
-        print(datetime.datetime.now(), 'Token sent')
         return
 
     def send_account_id (self):
-        print(datetime.datetime.now(), 'Sending account ID...')
+        print(datetime.datetime.now(), 'Sending account ID')
         self.send_headers(200)
         self.wfile.write(json.dumps(self.config.account).encode())
-        print(datetime.datetime.now(), 'Account ID sent')
         return
 
     def send_guid (self):
-        print(datetime.datetime.now(), 'Sending GUID...')
+        print(datetime.datetime.now(), 'Sending GUID')
         self.send_headers(201)
         self.wfile.write(json.dumps(self.config.guid).encode())
-        print(datetime.datetime.now(), 'GUID sent')
         return
 
     def send_profile (self):
-        print (datetime.datetime.now(), 'Sending profile...')
+        print (datetime.datetime.now(), 'Sending profile')
         self.send_headers(200)
         self.wfile.write(self.config.get_profile().encode())
-        print(datetime.datetime.now(), 'Configuration profile sent')
         return
 
     def do_GET(self):
@@ -136,8 +133,8 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
 
         parsed_path = urllib.parse.urlparse(self.path)
         headers = self.headers
-        ctype, pdict = cgi.parse_header(self.headers['Content-Type'])
 
+        ctype, pdict = cgi.parse_header(self.headers['Content-Type'])
         if ctype == 'application/json':
             env = {}
         else:
@@ -169,30 +166,34 @@ def handle_request_helper(conf):
 def main():
 
     ips = [i[4][0] for i in socket.getaddrinfo(socket.gethostname(), family=2, port=0)]
-    print ("Available IPs: ")
-
+    print ("Available local IPs: ")
     k = 0
-    i = 0
     for ip in ips:
         k += 1
         print(k, ' - ', ip)
 
     while (1):
-        selected_ip = int(input("Choose IP for listening (enter number): "))
-        if selected_ip > 0 and selected_ip < k+1:
+        selected_ip = int(input("Choose local IP for listening (enter number): "))
+        if 0 < selected_ip < k+1:
             hostname = ips[selected_ip - 1]
             break
         else:
-            print ('Incorrect input')
-
+            print('Incorrect number')
     host = (hostname, 80)
-    username = input("Enter username: ")
+
+    while (1):
+        username = input("Enter username in format name@domain: ")
+        if re.match(r"\S+@\S+", username):
+            break
+        else:
+            print('Username is not valid')
+
     password = input("Enter password: ")
     conf_profile = input("Enter path to JSON file (without parenthesis): ")
     config = ConfigHandler(conf_profile, username, password)
     handler = handle_request_helper(config)
     server = http.server.HTTPServer(host,handler)
-    print(datetime.datetime.now(), 'Server started')
+    print(20*'-' + '\n', datetime.datetime.now(), 'Starting server')
     server.serve_forever()
 
 if __name__ == '__main__':
